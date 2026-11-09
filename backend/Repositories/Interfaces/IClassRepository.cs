@@ -7,7 +7,7 @@ public interface IClassRepository
 {
     void Add(SchoolClass schoolClass);
     Task<SchoolClass?> GetForUpdateAsync(Guid classId, CancellationToken cancellationToken);
-    Task<SchoolClass?> TryGetForUpdateAsync(Guid classId, CancellationToken cancellationToken);
+    Task<List<Guid>> GetExpiryBatchForUpdateAsync(DateTimeOffset now, CancellationToken cancellationToken);
     Task<List<ClassDetailsResponse>> GetAllAsync(DateTimeOffset now, CancellationToken cancellationToken);
     Task<ClassDetailsResponse?> GetByIdAsync(Guid classId, DateTimeOffset now, CancellationToken cancellationToken);
 }

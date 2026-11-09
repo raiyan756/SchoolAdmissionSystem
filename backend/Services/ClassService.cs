@@ -21,9 +21,15 @@ public class ClassService(IClassRepository classes, AppDbContext db)
         return new ClassResponse(schoolClass.Id, schoolClass.Name, schoolClass.TotalSeats);
     }
 
-    public Task<List<ClassDetailsResponse>> GetAllAsync(CancellationToken cancellationToken)
-        => classes.GetAllAsync(DateTimeOffset.UtcNow, cancellationToken);
+    public async Task<List<ClassDetailsResponse>> GetAllAsync(CancellationToken cancellationToken)
+    {
+        var now = await db.GetDatabaseTimeAsync(cancellationToken);
+        return await classes.GetAllAsync(now, cancellationToken);
+    }
 
-    public Task<ClassDetailsResponse?> GetByIdAsync(Guid classId, CancellationToken cancellationToken)
-        => classes.GetByIdAsync(classId, DateTimeOffset.UtcNow, cancellationToken);
+    public async Task<ClassDetailsResponse?> GetByIdAsync(Guid classId, CancellationToken cancellationToken)
+    {
+        var now = await db.GetDatabaseTimeAsync(cancellationToken);
+        return await classes.GetByIdAsync(classId, now, cancellationToken);
+    }
 }

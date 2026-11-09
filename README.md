@@ -36,6 +36,8 @@ The test stack has its own Compose project, network, backend and temporary Postg
 
 Coverage includes class validation and responses, student identity and ownership, concurrent seat allocation (60 requests for 7 seats), duplicate student races, idempotent confirmation/cancellation, confirm/cancel races, and autonomous background expiry. The expiry test shortens test-record deadlines in PostgreSQL and polls the database without API calls, so a read endpoint cannot accidentally satisfy that test.
 
+Regression tests also cover expiry beyond 100 locked classes and consistent expired-hold reads before the worker persists the status. Expiry decisions and seat counts use PostgreSQL time. The worker selects and locks up to 100 available classes in one transaction, skipping busy classes while filling the batch.
+
 ## Backend endpoints
 
 | Method | Path | Purpose |

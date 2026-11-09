@@ -15,10 +15,19 @@ public class ClassRepository(AppDbContext db) : IClassRepository
         => db.Classes.FromSqlInterpolated($"SELECT * FROM \"Classes\" WHERE \"Id\" = {classId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
 
-    // Expiry sweeps skip busy classes and revisit them on the next tick.
-    public Task<SchoolClass?> TryGetForUpdateAsync(Guid classId, CancellationToken cancellationToken)
-        => db.Classes.FromSqlInterpolated($"SELECT * FROM \"Classes\" WHERE \"Id\" = {classId} FOR UPDATE SKIP LOCKED")
-            .SingleOrDefaultAsync(cancellationToken);
+    // PostgreSQL skips locked rows while filling the batch, so busy classes cannot hide later candidates.
+    public Task<List<Guid>> GetExpiryBatchForUpdateAsync(DateTimeOffset now, CancellationToken cancellationToken)
+        => db.Database.SqlQuery<Guid>($"""
+            SELECT c."Id" AS "Value"
+            FROM "Classes" AS c
+            WHERE EXISTS (
+                SELECT 1 FROM "Holds" AS h
+                WHERE h."ClassId" = c."Id" AND h."Status" = 'HELD' AND h."ExpiresAt" <= {now}
+            )
+            ORDER BY c."Id"
+            LIMIT 100
+            FOR UPDATE OF c SKIP LOCKED
+            """).ToListAsync(cancellationToken);
 
     public Task<List<ClassDetailsResponse>> GetAllAsync(DateTimeOffset now, CancellationToken cancellationToken)
         => WithSeatCounts(db.Classes.OrderBy(x => x.Name).ThenBy(x => x.Id), now)

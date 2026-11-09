@@ -236,6 +236,93 @@ public class AdmissionApiTests : IAsyncLifetime
         Assert.NotEqual(expiredId, await CreateHoldAsync(classId));
     }
 
+    [Fact]
+    public async Task Worker_skips_locked_classes_before_applying_batch_limit()
+    {
+        var ids = Enumerable.Range(0, 101).Select(_ => Guid.NewGuid())
+            .OrderBy(id => id.ToString(), StringComparer.Ordinal).ToArray();
+        createdClasses.AddRange(ids);
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using (var setup = new NpgsqlCommand("""
+            INSERT INTO "Classes" ("Id", "Name", "TotalSeats")
+            SELECT id, 'Expiry batch regression', 1 FROM unnest(@ids) AS id;
+            INSERT INTO "Holds" ("Id", "ClassId", "StudentId", "Status", "CreatedAt", "ExpiresAt")
+            SELECT gen_random_uuid(), id, '00123456789012345', 'HELD',
+                clock_timestamp() - interval '2 minutes', clock_timestamp() + interval '10 minutes'
+            FROM unnest(@ids) AS id;
+            """, connection))
+        {
+            setup.Parameters.AddWithValue("ids", ids);
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using (var lockClasses = new NpgsqlCommand("""
+            SELECT "Id" FROM "Classes" WHERE "Id" = ANY(@ids) ORDER BY "Id" FOR UPDATE
+            """, connection, transaction))
+        {
+            lockClasses.Parameters.AddWithValue("ids", ids.Take(100).ToArray());
+            await lockClasses.ExecuteNonQueryAsync();
+        }
+
+        // A separate connection publishes expired deadlines while the first 100 parent rows stay locked.
+        await using (var deadlines = new NpgsqlConnection(connectionString))
+        {
+            await deadlines.OpenAsync();
+            await using var expire = new NpgsqlCommand("""
+                UPDATE "Holds" SET "ExpiresAt" = clock_timestamp() - interval '1 second'
+                WHERE "ClassId" = ANY(@ids)
+                """, deadlines);
+            expire.Parameters.AddWithValue("ids", ids);
+            Assert.Equal(101, await expire.ExecuteNonQueryAsync());
+        }
+
+        var timeout = Stopwatch.StartNew();
+        while (await ScalarAsync<string>("SELECT \"Status\" FROM \"Holds\" WHERE \"ClassId\" = @id", ids[^1]) != "EXPIRED")
+        {
+            Assert.True(timeout.Elapsed < TimeSpan.FromSeconds(8), "An unlocked class after 100 locked candidates must still expire.");
+            await Task.Delay(100);
+        }
+        Assert.Equal("HELD", await ScalarAsync<string>("SELECT \"Status\" FROM \"Holds\" WHERE \"ClassId\" = @id", ids[0]));
+        await transaction.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task Expired_hold_reads_agree_before_worker_persists_status()
+    {
+        var classId = await CreateClassAsync(2);
+        var expiredId = await CreateHoldAsync(classId);
+        var confirmedId = await CreateHoldAsync(classId, OtherStudent);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Post, $"/holds/{confirmedId}/confirm", OtherStudent)).Status);
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using (var lockClass = new NpgsqlCommand("SELECT \"Id\" FROM \"Classes\" WHERE \"Id\" = @id FOR UPDATE", connection, transaction))
+        {
+            lockClass.Parameters.AddWithValue("id", classId);
+            await lockClass.ExecuteNonQueryAsync();
+        }
+        // Publish past deadlines from another connection; the worker cannot update this locked class yet.
+        Assert.Equal(2L, await ScalarAsync<long>("""
+            WITH changed AS (
+                UPDATE "Holds" SET "CreatedAt" = clock_timestamp() - interval '2 minutes',
+                    "ExpiresAt" = clock_timestamp() - interval '1 minute'
+                WHERE "ClassId" = @id RETURNING 1
+            ) SELECT count(*) FROM changed
+            """, classId));
+
+        AssertSeats((await SendAsync(HttpMethod.Get, $"/classes/{classId}")).Body, 0, 1, 1);
+        var list = (await SendAsync(HttpMethod.Get, "/classes")).Body;
+        AssertSeats(Assert.Single(list.EnumerateArray(), x => x.GetProperty("id").GetGuid() == classId), 0, 1, 1);
+        Assert.Equal("EXPIRED", (await SendAsync(HttpMethod.Get, $"/holds/{expiredId}")).Body.GetProperty("status").GetString());
+        var mine = (await SendAsync(HttpMethod.Get, "/me/holds", Student)).Body;
+        Assert.Equal("EXPIRED", Assert.Single(mine.EnumerateArray()).GetProperty("status").GetString());
+        Assert.Equal("HELD", await ScalarAsync<string>("SELECT \"Status\" FROM \"Holds\" WHERE \"Id\" = @id", expiredId));
+        await transaction.RollbackAsync();
+    }
+
     private async Task<Guid> CreateClassAsync(int seats)
     {
         using var response = await client.PostAsJsonAsync("/classes", new { name = "  Integration test  ", totalSeats = seats });

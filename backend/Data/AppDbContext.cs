@@ -8,6 +8,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SchoolClass> Classes => Set<SchoolClass>();
     public DbSet<Hold> Holds => Set<Hold>();
 
+    // Share one authoritative clock across allocation, reads and expiry; evaluate after lock waits.
+    public Task<DateTimeOffset> GetDatabaseTimeAsync(CancellationToken cancellationToken)
+        => Database.SqlQuery<DateTimeOffset>($"SELECT clock_timestamp() AS \"Value\"")
+            .SingleAsync(cancellationToken);
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var schoolClass = modelBuilder.Entity<SchoolClass>();
