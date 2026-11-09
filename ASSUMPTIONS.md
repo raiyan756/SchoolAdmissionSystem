@@ -17,7 +17,7 @@ Workers select up to 100 available class rows with `FOR UPDATE SKIP LOCKED`, the
 
 ## Scope and delivery choices
 
-- One API project uses controller/service/repository folders. Services use the shared scoped `AppDbContext` for transactions and SaveChanges; this is a small-project unit-of-work choice, not strict persistence-independent Clean Architecture. LINQ handles ordinary queries; parameterized SQL handles PostgreSQL locks and clock reads.
+- One API project uses controller/service/repository folders. Services use the shared scoped `AppDbContext` as the unit of work for transactions and SaveChanges, so the service layer depends on EF Core. LINQ handles ordinary queries; parameterized SQL handles PostgreSQL locks and clock reads.
 - React uses local state, a small identity context and shared fetch hooks. Unknown write outcomes are not automatically retried; users check application history. Server responses are authoritative, including conflicts and ownership errors.
 - The frontend's `/api` requests pass through its web server. `API_BASE_URL` changes that server's backend target at container startup, without rebuilding JavaScript or requiring CORS. The API remains directly available at localhost:8080. Startup applies migrations; a production deployment would normally manage migrations/secrets separately.
 - No initial classes/admissions are seeded. Create classes through the UI. The named PostgreSQL volume persists across ordinary restarts; test stacks use separate temporary databases. `/health` is host liveness, not a comprehensive database readiness check.

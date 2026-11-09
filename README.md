@@ -88,6 +88,8 @@ Open http://localhost:5173. Vite proxies `/api` to `http://localhost:8080`; over
 
 `backend/` contains one API project with Controllers, Services, Repositories, Models, DTOs, Data/Migrations and Workers. `frontend/` contains React pages, shared UI, API types/client and small request hooks. `tests/SchoolAdmission.Api.Tests/` holds backend tests. Frontend tests live in `frontend/tests/`.
 
+The [implementation plan](DOCS/IMPLEMENTATION_PLAN.md) records the step-by-step milestones and completed verification.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/classes` | Create with `name` and `totalSeats` |
