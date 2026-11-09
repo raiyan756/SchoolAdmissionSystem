@@ -15,6 +15,11 @@ public class ClassRepository(AppDbContext db) : IClassRepository
         => db.Classes.FromSqlInterpolated($"SELECT * FROM \"Classes\" WHERE \"Id\" = {classId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
 
+    // Expiry sweeps skip busy classes and revisit them on the next tick.
+    public Task<SchoolClass?> TryGetForUpdateAsync(Guid classId, CancellationToken cancellationToken)
+        => db.Classes.FromSqlInterpolated($"SELECT * FROM \"Classes\" WHERE \"Id\" = {classId} FOR UPDATE SKIP LOCKED")
+            .SingleOrDefaultAsync(cancellationToken);
+
     public Task<List<ClassDetailsResponse>> GetAllAsync(DateTimeOffset now, CancellationToken cancellationToken)
         => WithSeatCounts(db.Classes.OrderBy(x => x.Name).ThenBy(x => x.Id), now)
             .ToListAsync(cancellationToken);

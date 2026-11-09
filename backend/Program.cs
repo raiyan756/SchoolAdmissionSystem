@@ -3,6 +3,7 @@ using SchoolAdmission.Api.Data;
 using SchoolAdmission.Api.Repositories;
 using SchoolAdmission.Api.Repositories.Interfaces;
 using SchoolAdmission.Api.Services;
+using SchoolAdmission.Api.Workers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +17,7 @@ builder.Services.AddScoped<IClassRepository, ClassRepository>();
 builder.Services.AddScoped<ClassService>();
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
 builder.Services.AddScoped<HoldService>();
+builder.Services.AddHostedService<HoldExpiryWorker>();
 builder.Services.AddOptions<HoldOptions>()
     .Configure(options => options.DurationSeconds = builder.Configuration.GetValue("HOLD_DURATION_SECONDS", 600))
     .Validate(options => options.DurationSeconds > 0, "HOLD_DURATION_SECONDS must be a positive integer.")

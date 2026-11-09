@@ -12,6 +12,8 @@ public enum HoldCreationError { None, ClassNotFound, DuplicateActiveHold, NoSeat
 
 public record HoldCreationResult(HoldResponse? Hold, HoldCreationError Error = HoldCreationError.None);
 
+public enum HoldActionResult { Success, NotFound, Forbidden, NotActive, AlreadyConfirmed }
+
 public class HoldService(IClassRepository classes, IHoldRepository holds, AppDbContext db, IOptions<HoldOptions> options)
 {
     public async Task<HoldCreationResult> CreateAsync(Guid classId, string studentId, CancellationToken cancellationToken)
@@ -21,7 +23,7 @@ public class HoldService(IClassRepository classes, IHoldRepository holds, AppDbC
         if (schoolClass is null)
             return new(null, HoldCreationError.ClassNotFound);
 
-        // All seat-changing operations must lock the class first, including future confirm/cancel flows.
+        // Creation, confirmation, cancellation and expiry all lock the class first.
         var now = await holds.GetDatabaseTimeAsync(cancellationToken);
         await holds.ExpireForClassAsync(classId, now, cancellationToken);
 
@@ -49,5 +51,67 @@ public class HoldService(IClassRepository classes, IHoldRepository holds, AppDbC
         await transaction.CommitAsync(cancellationToken);
 
         return new(new HoldResponse(hold.Id, hold.ClassId, hold.StudentId, "HELD", hold.ExpiresAt));
+    }
+
+    public async Task<HoldDetailsResponse?> GetByIdAsync(Guid holdId, CancellationToken cancellationToken)
+    {
+        var hold = await holds.GetByIdAsync(holdId, cancellationToken);
+        if (hold is null) return null;
+
+        var now = await holds.GetDatabaseTimeAsync(cancellationToken);
+        var status = hold.Status == HoldStatus.Held && hold.ExpiresAt <= now ? HoldStatus.Expired : hold.Status;
+        return new(hold.Id, hold.ClassId, status.ToString().ToUpperInvariant(), hold.ExpiresAt);
+    }
+
+    public async Task<List<MyHoldResponse>> GetForStudentAsync(string studentId, CancellationToken cancellationToken)
+        => await holds.GetForStudentAsync(studentId, await holds.GetDatabaseTimeAsync(cancellationToken), cancellationToken);
+
+    public Task<HoldActionResult> ConfirmAsync(Guid holdId, string studentId, CancellationToken cancellationToken)
+        => ChangeStatusAsync(holdId, studentId, HoldStatus.Confirmed, cancellationToken);
+
+    public Task<HoldActionResult> CancelAsync(Guid holdId, string studentId, CancellationToken cancellationToken)
+        => ChangeStatusAsync(holdId, studentId, HoldStatus.Cancelled, cancellationToken);
+
+    private async Task<HoldActionResult> ChangeStatusAsync(Guid holdId, string studentId, HoldStatus target, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        // Resolve the immutable class ID without tracking the hold; reload it after locking and expiry.
+        var classId = await holds.GetClassIdAsync(holdId, cancellationToken);
+        if (classId is null || await classes.GetForUpdateAsync(classId.Value, cancellationToken) is null)
+            return HoldActionResult.NotFound;
+
+        var now = await holds.GetDatabaseTimeAsync(cancellationToken);
+        await holds.ExpireForClassAsync(classId.Value, now, cancellationToken);
+        var hold = await holds.GetByIdAsync(holdId, cancellationToken);
+
+        var result = hold is null ? HoldActionResult.NotFound
+            : hold.StudentId != studentId ? HoldActionResult.Forbidden
+            : hold.Status == target ? HoldActionResult.Success
+            : hold.Status == HoldStatus.Confirmed ? HoldActionResult.AlreadyConfirmed
+            : hold.Status != HoldStatus.Held ? HoldActionResult.NotActive
+            : HoldActionResult.Success;
+
+        if (result == HoldActionResult.Success && hold!.Status != target)
+        {
+            hold.Status = target;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    public async Task ExpireDueAsync(CancellationToken cancellationToken)
+    {
+        var dueClasses = await holds.GetExpiredClassIdsAsync(await holds.GetDatabaseTimeAsync(cancellationToken), cancellationToken);
+        foreach (var classId in dueClasses)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+            if (await classes.TryGetForUpdateAsync(classId, cancellationToken) is null) continue;
+
+            var now = await holds.GetDatabaseTimeAsync(cancellationToken);
+            await holds.ExpireForClassAsync(classId, now, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
     }
 }
