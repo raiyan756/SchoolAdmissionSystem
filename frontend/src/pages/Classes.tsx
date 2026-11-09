@@ -18,7 +18,7 @@ export default function Classes() {
         <thead><tr><th>ক্লাস / শিফট</th><th>মোট আসন</th><th>সংরক্ষিত</th><th>ভর্তি নিশ্চিত</th><th>খালি আসন</th><th><span className="sr-only">করণীয়</span></th></tr></thead>
         <tbody>{data.map(item => <tr key={item.id}><td className="class-name">{item.name}</td><td>{item.totalSeats}</td><td>{item.heldSeats}</td><td>{item.confirmedSeats}</td>
           <td><span className={`seat-count ${item.availableSeats === 0 ? 'full' : ''}`}>{item.availableSeats}</span></td>
-          <td><Link className="button primary compact" to={`/classes/${item.id}`}>বিস্তারিত দেখুন</Link>{item.availableSeats === 0 && <small className="sold-out">আসন পূর্ণ</small>}</td></tr>)}</tbody>
+          <td><Link className={`button ${item.availableSeats > 0 ? 'primary' : 'secondary'} compact`} to={`/classes/${item.id}`}>{item.availableSeats > 0 ? 'আবেদন করুন' : 'বিস্তারিত দেখুন'}</Link>{item.availableSeats === 0 && <small className="sold-out">আসন পূর্ণ</small>}</td></tr>)}</tbody>
       </table></div>}
     <aside className="help-note"><strong>আবেদনের নিয়ম</strong><p>আবেদনের পর আসন সাময়িকভাবে সংরক্ষিত থাকবে। নির্ধারিত সময়ের মধ্যে ভর্তি ফি দিয়ে ভর্তি নিশ্চিত করুন। সময় শেষ হলে আসন আবার খালি হবে।</p></aside>
   </>;

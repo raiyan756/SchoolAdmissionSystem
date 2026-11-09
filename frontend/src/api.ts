@@ -34,7 +34,9 @@ export async function request<T>(path: string, options: RequestInit = {}, studen
   const headers = new Headers(options.headers);
   if (options.body) headers.set('Content-Type', 'application/json');
   if (studentId) headers.set('X-Student-Id', studentId);
-  const response = await fetch(`/api${path}`, { ...options, headers, cache: 'no-store' });
+  const timeout = AbortSignal.timeout(15000);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  const response = await fetch(`/api${path}`, { ...options, headers, signal, cache: 'no-store' });
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as { title?: string };
     throw new ApiError(response.status, messages[problem.title ?? ''] ??
