@@ -1,7 +1,7 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext } from "react";
 
 export const SessionContext = createContext({
-  studentId: '',
+  studentId: "",
   working: false,
   setWorking: (_value: boolean) => {},
 });
