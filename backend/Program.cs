@@ -14,6 +14,12 @@ var connectionString = builder.Configuration.GetConnectionString("AdmissionDb")
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IClassRepository, ClassRepository>();
 builder.Services.AddScoped<ClassService>();
+builder.Services.AddScoped<IHoldRepository, HoldRepository>();
+builder.Services.AddScoped<HoldService>();
+builder.Services.AddOptions<HoldOptions>()
+    .Configure(options => options.DurationSeconds = builder.Configuration.GetValue("HOLD_DURATION_SECONDS", 600))
+    .Validate(options => options.DurationSeconds > 0, "HOLD_DURATION_SECONDS must be a positive integer.")
+    .ValidateOnStart();
 
 var app = builder.Build();
 

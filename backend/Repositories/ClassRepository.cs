@@ -10,6 +10,11 @@ public class ClassRepository(AppDbContext db) : IClassRepository
 {
     public void Add(SchoolClass schoolClass) => db.Classes.Add(schoolClass);
 
+    // The caller must hold a transaction until the seat allocation is committed.
+    public Task<SchoolClass?> GetForUpdateAsync(Guid classId, CancellationToken cancellationToken)
+        => db.Classes.FromSqlInterpolated($"SELECT * FROM \"Classes\" WHERE \"Id\" = {classId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
+
     public Task<List<ClassDetailsResponse>> GetAllAsync(DateTimeOffset now, CancellationToken cancellationToken)
         => WithSeatCounts(db.Classes.OrderBy(x => x.Name).ThenBy(x => x.Id), now)
             .ToListAsync(cancellationToken);
