@@ -1,13 +1,19 @@
 using Microsoft.EntityFrameworkCore;
 using SchoolAdmission.Api.Data;
+using SchoolAdmission.Api.Repositories;
+using SchoolAdmission.Api.Repositories.Interfaces;
+using SchoolAdmission.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:8080");
 builder.Services.AddControllers();
+builder.Services.AddProblemDetails();
 var connectionString = builder.Configuration.GetConnectionString("AdmissionDb")
     ?? throw new InvalidOperationException("Set ConnectionStrings__AdmissionDb to a PostgreSQL connection string.");
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddScoped<IClassRepository, ClassRepository>();
+builder.Services.AddScoped<ClassService>();
 
 var app = builder.Build();
 
@@ -18,6 +24,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     await db.Database.MigrateAsync();
 }
 
+app.UseExceptionHandler();
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
