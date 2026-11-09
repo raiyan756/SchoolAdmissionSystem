@@ -17,7 +17,7 @@ import { SessionContext } from "./Session";
 
 function readStudent() {
   try {
-    const saved = sessionStorage.getItem("admission.student.v1") ?? "";
+    const saved = localStorage.getItem("admission.student.v1") ?? "";
     return validStudentId(saved) ? saved : "";
   } catch {
     return "";
@@ -47,7 +47,7 @@ export default function App() {
     setIdentityError("");
     setStudentId(draft);
     try {
-      sessionStorage.setItem("admission.student.v1", draft);
+      localStorage.setItem("admission.student.v1", draft);
     } catch {
       /* In-memory identity still works. */
     }

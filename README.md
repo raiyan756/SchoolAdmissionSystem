@@ -57,7 +57,7 @@ docker compose -f docker-compose.frontend-test.yml up --build --abort-on-contain
 
 Chromium/Playwright runs entirely in Docker. The test image contains browsers, so its first download is larger than the application image. The isolated stack uses the production frontend image, a real API and temporary PostgreSQL database. A 12-second hold duration keeps expiry checks short.
 
-Nine deterministic browser tests cover contracts/validation, leading-zero identity and switching, duplicate/pending requests, confirmation, cancellation with 204, server-authoritative expiry, retry/empty states, slow-request polling and mobile/keyboard behaviour. Four real-stack journeys cover confirmation/reload/history, cancellation, expiry and two browser sessions competing for the last seat.
+Nine deterministic browser tests cover contracts/validation, leading-zero identity and switching, duplicate/pending requests, confirmation, cancellation with 204, server-authoritative expiry, retry/empty states, slow-request polling and mobile/keyboard behaviour. Five real-stack journeys cover confirmation/reload/history, cancellation, expiry, two browser sessions competing for the last seat, and restoring a current application in a new browser session using persisted local storage.
 
 Both test commands return nonzero on failure. Check/preserve that result before cleanup:
 

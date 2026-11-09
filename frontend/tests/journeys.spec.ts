@@ -42,6 +42,47 @@ async function createClass(page: Page, name: string, seats = 1) {
   return page.url().split("/").at(-1)!;
 }
 
+test("a returning browser session restores the student and current application", async ({
+  browser,
+}) => {
+  const original = await browser.newContext({ baseURL: process.env.BASE_URL });
+  let savedState;
+  const student = newStudent();
+  let applicationUrl = "";
+  try {
+    const page = await original.newPage();
+    await createClass(page, `UI returning student ${Date.now()}`);
+    await chooseStudent(page, student);
+    await page.getByRole("button", { name: "Apply now", exact: true }).click();
+    await expect(page.getByRole("timer")).toBeVisible();
+    applicationUrl = page.url();
+    // storageState persists localStorage/cookies, but deliberately excludes sessionStorage.
+    savedState = await original.storageState();
+  } finally {
+    await original.close();
+  }
+  const returning = await browser.newContext({
+    baseURL: process.env.BASE_URL,
+    storageState: savedState,
+  });
+  try {
+    const page = await returning.newPage();
+    await page.goto("/me/holds");
+    await expect(
+      page.getByLabel("Birth registration number", { exact: false }),
+    ).toHaveValue(student);
+    await page
+      .getByRole("link", { name: "View application", exact: false })
+      .click();
+    await expect(page).toHaveURL(applicationUrl);
+    await expect(
+      page.getByRole("button", { name: "Pay admission fee", exact: true }),
+    ).toBeEnabled();
+  } finally {
+    await returning.close();
+  }
+});
+
 test("real create, apply, confirm, reload and history isolation", async ({
   page,
   request,

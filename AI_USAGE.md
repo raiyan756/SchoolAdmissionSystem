@@ -11,6 +11,7 @@ The applicant requested a minimal school admission portal with simple navigation
 - Review found inconsistent clocks: class availability used API-host time while hold operations used database time. Both now use PostgreSQL time. A regression test verifies effective expiry reads while the worker is blocked; OS clock skew itself was not injected.
 - Browser testing caught mobile overflow caused by visually hidden table text escaping its scroll container. The layout was fixed, including compact mobile rows exposing all counts/actions, and the viewport/keyboard test passes.
 - Frontend review found that aborting a slow GET on every polling tick could prevent completion. Polling now avoids overlapping reads, with cleanup on navigation/identity changes and a bounded timeout.
+- Final comparison with the brief caught a persistence mismatch: `sessionStorage` remembered the selected student only for that tab session. The brief also requires recovering applications after closing/reopening the browser. This was changed to `localStorage`, with a browser-session restoration test; application data still comes from PostgreSQL.
 
 ## Verification and limitations
 
