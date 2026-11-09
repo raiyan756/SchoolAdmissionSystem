@@ -26,5 +26,15 @@
       db:
         condition: service_healthy
 
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    environment:
+      API_BASE_URL: "${API_BASE_URL:-http://backend:8080}"
+    depends_on:
+      backend:
+        condition: service_started
+
 volumes:
   postgres_data:

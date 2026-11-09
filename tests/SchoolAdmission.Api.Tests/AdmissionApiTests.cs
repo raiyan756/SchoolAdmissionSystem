@@ -323,6 +323,54 @@ public class AdmissionApiTests : IAsyncLifetime
         await transaction.RollbackAsync();
     }
 
+    [Fact]
+    public async Task Two_backend_processes_share_capacity_with_confirmed_admissions()
+    {
+        using var second = await ReadySecondBackendAsync();
+        var id = await CreateClassAsync(7);
+        var confirmed = await CreateHoldAsync(id);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Post, $"/holds/{confirmed}/confirm", Student)).Status);
+        var results = await RaceAsync(60, i => SendAsync(HttpMethod.Post, $"/classes/{id}/holds",
+            (i + 100).ToString("D17"), i % 2 == 0 ? client : second));
+        Assert.Equal(6, results.Count(x => x.Status == HttpStatusCode.Created));
+        Assert.Equal(54, results.Count(x => x.Status == HttpStatusCode.Conflict));
+        Assert.Equal(7L, await ScalarAsync<long>("SELECT count(*) FROM \"Holds\" WHERE \"ClassId\" = @id AND \"Status\" IN ('HELD','CONFIRMED')", id));
+        AssertSeats((await SendAsync(HttpMethod.Get, $"/classes/{id}")).Body, 6, 1, 0);
+        AssertSeats((await SendAsync(HttpMethod.Get, $"/classes/{id}", target: second)).Body, 6, 1, 0);
+    }
+
+    [Fact]
+    public async Task Two_backend_processes_prevent_duplicate_student_holds()
+    {
+        using var second = await ReadySecondBackendAsync();
+        var id = await CreateClassAsync(20);
+        var results = await RaceAsync(30, i => SendAsync(HttpMethod.Post, $"/classes/{id}/holds", Student,
+            i % 2 == 0 ? client : second));
+        Assert.Single(results, x => x.Status == HttpStatusCode.Created);
+        Assert.Equal(29, results.Count(x => x.Status == HttpStatusCode.Conflict));
+        Assert.Equal(1L, await ScalarAsync<long>("SELECT count(*) FROM \"Holds\" WHERE \"ClassId\" = @id", id));
+    }
+
+    private static async Task<HttpClient> ReadySecondBackendAsync()
+    {
+        var address = Environment.GetEnvironmentVariable("SECOND_API_BASE_URL")
+            ?? throw new InvalidOperationException("Set SECOND_API_BASE_URL or run docker-compose.test.yml for two-process tests.");
+        var second = new HttpClient { BaseAddress = new Uri(address), Timeout = TimeSpan.FromSeconds(30) };
+        var timeout = Stopwatch.StartNew();
+        while (timeout.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            try
+            {
+                using var response = await second.GetAsync("/health");
+                if (response.IsSuccessStatusCode) return second;
+            }
+            catch (HttpRequestException) { }
+            await Task.Delay(200);
+        }
+        second.Dispose();
+        throw new TimeoutException("The second backend did not become ready.");
+    }
+
     private async Task<Guid> CreateClassAsync(int seats)
     {
         using var response = await client.PostAsJsonAsync("/classes", new { name = "  Integration test  ", totalSeats = seats });
@@ -343,11 +391,11 @@ public class AdmissionApiTests : IAsyncLifetime
         return response.Body.GetProperty("holdId").GetGuid();
     }
 
-    private async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(HttpMethod method, string path, string? student = null)
+    private async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(HttpMethod method, string path, string? student = null, HttpClient? target = null)
     {
         using var request = new HttpRequestMessage(method, path);
         if (student is not null) request.Headers.TryAddWithoutValidation("X-Student-Id", student);
-        using var response = await client.SendAsync(request);
+        using var response = await (target ?? client).SendAsync(request);
         var json = await response.Content.ReadAsStringAsync();
         return (response.StatusCode, string.IsNullOrEmpty(json) ? default : JsonSerializer.Deserialize<JsonElement>(json));
     }

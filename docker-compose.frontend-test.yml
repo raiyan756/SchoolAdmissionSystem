@@ -1,0 +1,44 @@
+name: school-admission-frontend-tests
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: admission_ui_tests
+      POSTGRES_USER: admission_tests
+      POSTGRES_PASSWORD: tests_local
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admission_tests -d admission_ui_tests"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+  backend:
+    build: ./backend
+    environment:
+      ASPNETCORE_URLS: "http://0.0.0.0:8080"
+      HOLD_DURATION_SECONDS: "12"
+      ConnectionStrings__AdmissionDb: "Host=db;Database=admission_ui_tests;Username=admission_tests;Password=tests_local;GSS Encryption Mode=Disable"
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: "Warning"
+    depends_on:
+      db:
+        condition: service_healthy
+  frontend:
+    build: ./frontend
+    environment:
+      API_BASE_URL: "http://backend:8080"
+    depends_on:
+      backend:
+        condition: service_started
+  tests:
+    build:
+      context: ./frontend
+      target: tests
+    environment:
+      BASE_URL: "http://frontend"
+      CI: "true"
+      RUN_LIVE_TESTS: "true"
+    depends_on:
+      frontend:
+        condition: service_started

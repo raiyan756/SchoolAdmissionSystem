@@ -26,11 +26,25 @@ services:
       db_test:
         condition: service_healthy
 
+  backend_second:
+    build: ./backend
+    environment:
+      ASPNETCORE_URLS: "http://0.0.0.0:8081"
+      HOLD_DURATION_SECONDS: "600"
+      ConnectionStrings__AdmissionDb: "Host=db_test;Database=admission_tests;Username=admission_tests;Password=tests_local;GSS Encryption Mode=Disable"
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: "Warning"
+    depends_on:
+      db_test:
+        condition: service_healthy
+
   tests:
     build: ./tests/SchoolAdmission.Api.Tests
     environment:
       API_BASE_URL: "http://backend_test:8080"
+      SECOND_API_BASE_URL: "http://backend_second:8081"
       TEST_DB_CONNECTION: "Host=db_test;Database=admission_tests;Username=admission_tests;Password=tests_local;GSS Encryption Mode=Disable"
     depends_on:
       backend_test:
+        condition: service_started
+      backend_second:
         condition: service_started
