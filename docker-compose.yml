@@ -20,7 +20,7 @@
       - "8080:8080"
     environment:
       ASPNETCORE_URLS: "http://0.0.0.0:8080"
-      ConnectionStrings__AdmissionDb: "${ADMISSION_DB_CONNECTION:-Host=db;Port=5432;Database=admission;Username=admission;Password=admission_local}"
+      ConnectionStrings__AdmissionDb: "${ADMISSION_DB_CONNECTION:-Host=db;Port=5432;Database=admission;Username=admission;Password=admission_local;GSS Encryption Mode=Disable}"
     depends_on:
       db:
         condition: service_healthy
